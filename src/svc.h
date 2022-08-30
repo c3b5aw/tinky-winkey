@@ -20,12 +20,18 @@ HANDLE ghSvcStopEvent = NULL;
 */
 class Service {
 private:
-	static std::tuple<SC_HANDLE, SC_HANDLE> _getHandlers();
+	static std::tuple<SC_HANDLE, SC_HANDLE> getHandlers();
 public:
 	Service() {};
 
-	static void	Install();
+	static void Install();
 	static void	Start();
 	static void	Stop();
 	static void	Delete();
+	static void WINAPI Main();
+	static void WINAPI Init();
+	static void WINAPI ControlHandler(DWORD);
+	static void ReportStatus(DWORD dwCurrentState,
+		DWORD dwWin32ExitCode,
+		DWORD dwWaitHint);
 };

@@ -1,5 +1,6 @@
 #include "sdk.h"
 
-int main() {
+int main()
+{
 	std::cout << "Winkey" << std::endl;
 }

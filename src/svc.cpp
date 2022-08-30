@@ -1,7 +1,8 @@
 #include "sdk.h" 
 #include "svc.h"
 
-void Service::Install() {
+void Service::Install()
+{
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
 	TCHAR szPath[MAX_PATH + 2] = {0};
@@ -53,31 +54,8 @@ void Service::Install() {
 	CloseServiceHandle(schSCManager);
 }
 
-void Service::Start() {
-	auto [schSCManager, schService] = getHandlers();
-	if (schSCManager == nullptr || schService == nullptr) {
-		return;
-	}
-
-	std::cout << "Starting service\n";
-	if (StartService(schService, 0, NULL)) {
-		std::cout << "Service started succesfully\n";
-	}
-	else {
-		const DWORD lastError = GetLastError();
-		if (lastError == 1056) {
-			std::cout << "Service already started\n";
-		}
-		else {
-			std::cout << std::format("Service failed to start ({})\n", lastError);
-		}
-	}
-
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
-}
-
-std::tuple<SC_HANDLE, SC_HANDLE> Service::getHandlers() {
+std::tuple<SC_HANDLE, SC_HANDLE> Service::getHandlers()
+{
 	SC_HANDLE schService;
 	SC_HANDLE schSCManager;
 
@@ -102,7 +80,33 @@ std::tuple<SC_HANDLE, SC_HANDLE> Service::getHandlers() {
 	return std::make_tuple(schSCManager, schService);
 }
 
-void Service::Stop() {
+void Service::Start()
+{
+	auto [schSCManager, schService] = getHandlers();
+	if (schSCManager == nullptr || schService == nullptr) {
+		return;
+	}
+
+	std::cout << "Starting service\n";
+	if (StartService(schService, 0, NULL)) {
+		std::cout << "Service started succesfully\n";
+	}
+	else {
+		const DWORD lastError = GetLastError();
+		if (lastError == 1056) {
+			std::cout << "Service already started\n";
+		}
+		else {
+			std::cout << std::format("Service failed to start ({})\n", lastError);
+		}
+	}
+
+	CloseServiceHandle(schService);
+	CloseServiceHandle(schSCManager);
+}
+
+void Service::Stop()
+{
 	auto [schSCManager, schService] = getHandlers();
 	if (schSCManager == nullptr || schService == nullptr) {
 		return;
@@ -126,7 +130,8 @@ void Service::Stop() {
 	CloseServiceHandle(schSCManager);
 }
 
-void Service::Delete() {
+void Service::Delete()
+{
 	auto [schSCManager, schService] = getHandlers();
 	if (schSCManager == nullptr || schService == nullptr) {
 		return;
@@ -155,6 +160,92 @@ void Service::Delete() {
 	CloseServiceHandle(schSCManager);
 }
 
+void WINAPI Service::Main()
+{
+	gSvcStatusHandle = RegisterServiceCtrlHandler(
+		SVCNAME,
+		Service::ControlHandler
+	);
+
+	if (!gSvcStatusHandle) {
+		std::cout << "RegisterServiceCtrlHandler failed\n";
+		return;
+	}
+
+	gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+	gSvcStatus.dwServiceSpecificExitCode = 0;
+
+	ReportStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
+
+	Init();
+}
+
+void WINAPI Service::Init()
+{
+	ghSvcStopEvent = CreateEvent(
+		NULL,
+		TRUE,
+		FALSE,
+		NULL
+	);
+
+	if (ghSvcStopEvent == nullptr) {
+		ReportStatus(SERVICE_STOPPED, GetLastError(), 0);
+		return;
+	}
+
+	ReportStatus(SERVICE_RUNNING, NO_ERROR, 0);
+
+	// ToDo: Perform work
+
+	while (1) {
+		WaitForSingleObject(ghSvcStopEvent, INFINITE);
+		ReportStatus(SERVICE_STOPPED, NO_ERROR, 0);
+		return;
+	}
+}
+
+void WINAPI Service::ControlHandler(DWORD dwCtrl)
+{
+	switch (dwCtrl) {
+	case SERVICE_CONTROL_STOP:
+		ReportStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+		SetEvent(ghSvcStopEvent);
+		ReportStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
+	case SERVICE_CONTROL_INTERROGATE:
+		break;
+	default:
+		break;
+	}
+}
+
+void Service::ReportStatus(DWORD dwCurrentState,
+	DWORD dwWin32ExitCode,
+	DWORD dwWaitHint)
+{
+	static DWORD dwCheckPoint = 1;
+
+	gSvcStatus.dwCurrentState = dwCurrentState;
+	gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
+	gSvcStatus.dwWaitHint = dwWaitHint;
+
+	if (dwCurrentState == SERVICE_START_PENDING) {
+		gSvcStatus.dwControlsAccepted = 0;
+	}
+	else {
+		gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+	}
+
+	if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED)) {
+		gSvcStatus.dwCheckPoint = 0;
+	}
+	else {
+		gSvcStatus.dwCheckPoint = ++dwCheckPoint;
+	}
+
+	SetServiceStatus(gSvcStatusHandle, &gSvcStatus);
+}
+
 /*
 	__cdecl__: Stack is cleanup by the caller
 	_tmain	 : Windows conversion to enable Unicode support
@@ -162,17 +253,29 @@ void Service::Delete() {
 int __cdecl _tmain(int argc, TCHAR* argv[])
 {
 	if (argc == 2) {
-		if (std::strcmp(argv[1], "install") == 0) {
+		if (lstrcmpi(argv[1], TEXT("install")) == 0) {
 			Service::Install();
+			return 0;
 		}
-		else if (std::strcmp(argv[1], "start") == 0) {
+		else if (lstrcmpi(argv[1], TEXT("start")) == 0) {
 			Service::Start();
+			return 0;
 		}
-		else if (std::strcmp(argv[1], "stop") == 0) {
+		else if (lstrcmpi(argv[1], TEXT("stop")) == 0) {
 			Service::Stop();
+			return 0;
 		}
-		else if (std::strcmp(argv[1], "delete") == 0) {
+		else if (lstrcmpi(argv[1], TEXT("delete")) == 0) {
 			Service::Delete();
+			return 0;
 		}
 	}
+
+	SERVICE_TABLE_ENTRY DispatchTable[] = {
+		{SVCNAME, (LPSERVICE_MAIN_FUNCTION)Service::Main},
+		{NULL, NULL}
+	};
+
+	StartServiceCtrlDispatcher(DispatchTable);
+	return 0;
 }
