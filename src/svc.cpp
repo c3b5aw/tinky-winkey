@@ -59,8 +59,6 @@ std::tuple<SC_HANDLE, SC_HANDLE> Service::getHandlers()
 	SC_HANDLE schService;
 	SC_HANDLE schSCManager;
 
-	std::cout << "getHandlers\n";
-
 	schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 	if (schSCManager == nullptr) {
 		std::cout << std::format("OpenSCManager failed ({})\n", GetLastError());
