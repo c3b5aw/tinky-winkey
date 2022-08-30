@@ -160,11 +160,11 @@ void Service::Delete()
 	CloseServiceHandle(schSCManager);
 }
 
-void WINAPI Service::Main()
+VOID WINAPI Service::Main()
 {
 	gSvcStatusHandle = RegisterServiceCtrlHandler(
 		SVCNAME,
-		Service::ControlHandler
+		(LPHANDLER_FUNCTION)ControlHandler
 	);
 
 	if (!gSvcStatusHandle) {
@@ -271,8 +271,9 @@ int __cdecl _tmain(int argc, TCHAR* argv[])
 		}
 	}
 
-	SERVICE_TABLE_ENTRY DispatchTable[] = {
-		{SVCNAME, (LPSERVICE_MAIN_FUNCTION)Service::Main},
+	SERVICE_TABLE_ENTRY DispatchTable[] = {{
+			const_cast<LPSTR>(SVCNAME),
+			reinterpret_cast<LPSERVICE_MAIN_FUNCTION>(Service::Main)},
 		{NULL, NULL}
 	};
 
