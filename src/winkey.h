@@ -6,7 +6,7 @@
 
 #define LOG_FILE TEXT("winkey.log")
 
-HANDLE gLogHandle_ = nullptr;
+HANDLE gLogHandle;
 
 class Winkey {
 public:
@@ -17,4 +17,5 @@ public:
 	static LRESULT CALLBACK onKey(int code,
 		WPARAM wParam,
 		LPARAM lParam);
+	static const char* solve(PKBDLLHOOKSTRUCT kbdEv);
 };
