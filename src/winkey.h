@@ -26,6 +26,6 @@ public:
 		LONG idChild,
 		DWORD idEventThread,
 		DWORD dwmsEventTime);
-	static const char *solve(KBDLLHOOKSTRUCT *kbdEv);
+	static std::string solve(KBDLLHOOKSTRUCT *kbdEv);
 	static void logCurrentWindow();
 };

