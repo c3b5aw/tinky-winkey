@@ -1,4 +1,3 @@
-#include "sdk.h" 
 #include "svc.h"
 
 void Service::Install()
@@ -158,7 +157,7 @@ void Service::Delete()
 	CloseServiceHandle(schSCManager);
 }
 
-VOID WINAPI Service::Main()
+void WINAPI Service::Main()
 {
 	gSvcStatusHandle = RegisterServiceCtrlHandler(
 		SVCNAME,

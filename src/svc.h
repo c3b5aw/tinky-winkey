@@ -1,14 +1,11 @@
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
+#include "sdk.h"
 
-#include <windows.h>
-#include <tchar.h>
 #include <strsafe.h>
 #include <cstring>
 #include <thread>
 #include <chrono>
-#pragma comment(lib, "advapi32.lib")
 
 #define SVCNAME TEXT("tinky")
 

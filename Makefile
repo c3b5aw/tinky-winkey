@@ -34,9 +34,6 @@ create_dirs:
 	@if not exist $(BIN_DIR) mkdir $(BIN_DIR)
 	@if not exist $(OBJ_DIR) mkdir $(OBJ_DIR)
 
-move_bins:
-	@echo Moving bins..
-
 clean:
 	@echo Cleaning objects...
 	@if exist $(OBJ_DIR) rmdir /S /Q $(OBJ_DIR)
@@ -46,5 +43,5 @@ fclean: clean
 	@if exist $(BIN_SVC) del $(BIN_SVC)
 	@if exist $(BIN_WINKEY) del $(BIN_WINKEY)
 
-all: create_dirs $(BIN_SVC) $(BIN_WINKEY) move_bins
+all: create_dirs $(BIN_SVC) $(BIN_WINKEY)
 re: fclean all
