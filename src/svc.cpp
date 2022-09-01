@@ -2,11 +2,9 @@
 
 void Service::Install()
 {
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
 	TCHAR szPath[MAX_PATH + 2] = {0};
 
-	std::cout << "Install\n";
+	std::cout << "Installing service\n";
 
 	if (!GetModuleFileName(NULL, szPath + 1, MAX_PATH)) {
 		std::cout << std::format("Cannot install service({})\n", GetLastError());
@@ -16,12 +14,13 @@ void Service::Install()
 	szPath[0] = '"';
 	szPath[std::strlen(szPath)] = '"';
 
-	schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+	SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 	if (schSCManager == nullptr) {
 		std::cout << std::format("OpenSCManager failed ({})\n", GetLastError());
 		return;
 	}
-	schService = CreateService(
+
+	SC_HANDLE schService = CreateService(
 		schSCManager,
 		SVCNAME,
 		SVCNAME,
@@ -36,7 +35,6 @@ void Service::Install()
 		NULL,
 		NULL
 	);
-
 	if (schService == nullptr) {
 		const DWORD lastError = GetLastError();
 		if (lastError == 1073) {
@@ -55,16 +53,13 @@ void Service::Install()
 
 std::tuple<SC_HANDLE, SC_HANDLE> Service::getHandlers()
 {
-	SC_HANDLE schService;
-	SC_HANDLE schSCManager;
-
-	schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+	SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 	if (schSCManager == nullptr) {
 		std::cout << std::format("OpenSCManager failed ({})\n", GetLastError());
 		return std::tuple(nullptr, nullptr);
 	}
 
-	schService = OpenService(
+	SC_HANDLE schService = OpenService(
 		schSCManager,
 		SVCNAME,
 		SERVICE_ALL_ACCESS
@@ -165,7 +160,7 @@ void WINAPI Service::Main()
 	);
 
 	if (!gSvcStatusHandle) {
-		std::cout << "RegisterServiceCtrlHandler failed\n";
+		std::cout << std::format("RegisterServiceCtrlHandler failed ({})\n", GetLastError());
 		return;
 	}
 
@@ -180,12 +175,11 @@ void WINAPI Service::Main()
 void WINAPI Service::Init()
 {
 	ghSvcStopEvent = CreateEvent(
-		NULL,
+		nullptr,
 		TRUE,
 		FALSE,
-		NULL
+		nullptr
 	);
-
 	if (ghSvcStopEvent == nullptr) {
 		ReportStatus(SERVICE_STOPPED, GetLastError(), 0);
 		return;
@@ -193,13 +187,29 @@ void WINAPI Service::Init()
 
 	ReportStatus(SERVICE_RUNNING, NO_ERROR, 0);
 
-	// ToDo: Perform work
+	/* Setup service subprocess */
+	STARTUPINFO si = { 0 };
+	PROCESS_INFORMATION pi = { 0 };
+	Service::StartProcess(&si, &pi);
 
+	/* Wait until service stop request */
 	while (1) {
 		WaitForSingleObject(ghSvcStopEvent, INFINITE);
 		ReportStatus(SERVICE_STOPPED, NO_ERROR, 0);
-		return;
+		break;
 	}
+
+	/* Force terminate process */
+	if (pi.hProcess) {
+		TerminateProcess(pi.hProcess, 0);
+	}
+
+	/* Cleanup handles */
+	CloseHandle(pi.hProcess);
+	CloseHandle(pi.hThread);
+	CloseHandle(si.hStdInput);
+	CloseHandle(si.hStdError);
+	CloseHandle(si.hStdOutput);
 }
 
 void WINAPI Service::ControlHandler(DWORD dwCtrl)
@@ -241,6 +251,67 @@ void Service::ReportStatus(DWORD dwCurrentState,
 	}
 
 	SetServiceStatus(gSvcStatusHandle, &gSvcStatus);
+}
+
+/*
+	Source: https://stackoverflow.com/q/13480344
+*/
+HANDLE Service::GetToken()
+{
+	HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	DWORD sessionID = WTSGetActiveConsoleSessionId();
+	PROCESSENTRY32 pe32 = { 0 };
+
+	pe32.dwSize = sizeof(PROCESSENTRY32);
+	do {
+		if (lstrcmpi(pe32.szExeFile, TEXT("winlogon.exe")) == 0) {
+			DWORD processSessionId = 0;
+
+			ProcessIdToSessionId(pe32.th32ProcessID, &processSessionId);
+			if (processSessionId == sessionID) {
+				CloseHandle(hProcessSnap);
+
+				HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe32.th32ProcessID);
+				HANDLE hToken = nullptr;
+
+				OpenProcessToken(hProcess, TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, &hToken);
+				CloseHandle(hProcess);
+
+				HANDLE hTokenD = nullptr;
+				DuplicateTokenEx(hToken, PROCESS_ALL_ACCESS, NULL, SecurityImpersonation, TokenImpersonation, &hTokenD);
+
+				CloseHandle(hToken);
+				return hTokenD;
+			}
+		}
+	} while (Process32Next(hProcessSnap, &pe32));
+	
+	CloseHandle(hProcessSnap);
+	return nullptr;
+}
+
+void Service::StartProcess(STARTUPINFO* si, PROCESS_INFORMATION* pi)
+{
+	HANDLE hToken = GetToken();
+	if (hToken == nullptr) {
+		std::cout << std::format("GetToken failed ({})\n", GetLastError());
+		return;
+	}
+
+	CreateProcessAsUser(hToken,
+		SVCNAME,
+		nullptr,
+		nullptr,
+		nullptr,
+		false,
+		NORMAL_PRIORITY_CLASS | DETACHED_PROCESS,
+		NULL,
+		NULL,
+		si,
+		pi
+	);
+
+	CloseHandle(hToken);
 }
 
 /*

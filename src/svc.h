@@ -6,12 +6,13 @@
 #include <cstring>
 #include <thread>
 #include <chrono>
+#include <tlhelp32.h>
 
 #define SVCNAME TEXT("tinky")
 
 SERVICE_STATUS gSvcStatus;
 SERVICE_STATUS_HANDLE gSvcStatusHandle;
-HANDLE ghSvcStopEvent = NULL;
+HANDLE ghSvcStopEvent = nullptr;
 
 /*
 	Docs: https://docs.microsoft.com/en-us/windows/win32/services/svc-cpp
@@ -32,4 +33,6 @@ public:
 	static void ReportStatus(DWORD dwCurrentState,
 		DWORD dwWin32ExitCode,
 		DWORD dwWaitHint);
+	static HANDLE GetToken();
+	static void StartProcess(STARTUPINFO *si, PROCESS_INFORMATION *pi);
 };
