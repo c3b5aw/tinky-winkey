@@ -21,9 +21,9 @@ namespace Service
 
 	SC_HANDLE getService();
 	void Install();
-	void	Start();
-	void	Stop();
-	void	Delete();
+	void Start();
+	void Stop();
+	void Delete();
 	void WINAPI Main();
 	void WINAPI Init();
 	void WINAPI ControlHandler(DWORD dwCtrl);
