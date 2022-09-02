@@ -29,10 +29,12 @@ public:
 	static void	Delete();
 	static void WINAPI Main();
 	static void WINAPI Init();
-	static void WINAPI ControlHandler(DWORD);
+	static void WINAPI ControlHandler(DWORD dwCtrl);
 	static void ReportStatus(DWORD dwCurrentState,
 		DWORD dwWin32ExitCode,
 		DWORD dwWaitHint);
 	static HANDLE GetToken();
-	static void StartProcess(STARTUPINFO *si, PROCESS_INFORMATION *pi);
+	static void StartProcess(STARTUPINFO *si,
+		PROCESS_INFORMATION *pi
+	);
 };

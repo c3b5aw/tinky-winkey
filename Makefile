@@ -18,6 +18,12 @@ SRC_WINKEY	= $(SRC_DIR)\winkey.cpp
 OBJ_WINKEY	= $(SRC_WINKEY:.cpp=.obj)
 OBJ_WINKEY	= $(OBJ_WINKEY:src=obj)
 
+all: create_dirs $(BIN_SVC) $(BIN_WINKEY) moving_bins
+
+moving_bins:
+	copy bin\$(BIN_SVC) C:\$(BIN_SVC)
+	copy bin\$(BIN_WINKEY) C:\$(BIN_WINKEY)
+
 {$(SRC_DIR)}.cpp{$(OBJ_DIR)}.obj:
 	@echo Compiling...
 	$(CC) /c /nologo $(CFLAGS) /Fo$(OBJ_DIR)\ /I$(SRC_DIR) $<
@@ -42,6 +48,7 @@ fclean: clean
 	@echo Cleaning binaries...
 	@if exist $(BIN_SVC) del $(BIN_SVC)
 	@if exist $(BIN_WINKEY) del $(BIN_WINKEY)
+	@if exist C:\$(BIN_WINKEY) del C:\$(BIN_WINKEY)
+	@if exist C:\$(BIN_WINKEY) del C:\$(BIN_WINKEY)
 
-all: create_dirs $(BIN_SVC) $(BIN_WINKEY)
 re: fclean all

