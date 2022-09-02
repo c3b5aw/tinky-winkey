@@ -19,7 +19,7 @@ namespace Service
 	SERVICE_STATUS_HANDLE gSvcStatusHandle;
 	HANDLE ghSvcStopEvent = nullptr;
 
-	std::tuple<SC_HANDLE, SC_HANDLE> getHandlers();
+	SC_HANDLE getService();
 	void Install();
 	void	Start();
 	void	Stop();
