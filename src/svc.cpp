@@ -71,7 +71,7 @@ std::tuple<SC_HANDLE, SC_HANDLE> Service::getHandlers()
 
 void Service::Start()
 {
-	auto [schSCManager, schService] = getHandlers();
+	auto [schSCManager, schService] = Service::getHandlers();
 	if (schSCManager == nullptr || schService == nullptr) {
 		return;
 	}
@@ -96,13 +96,13 @@ void Service::Start()
 
 void Service::Stop()
 {
-	auto [schSCManager, schService] = getHandlers();
+	auto [schSCManager, schService] = Service::getHandlers();
 	if (schSCManager == nullptr || schService == nullptr) {
 		return;
 	}
 
 	std::cout << "Stopping service\n";
-	if (ControlService(schService, SERVICE_CONTROL_STOP, &gSvcStatus)) {
+	if (ControlService(schService, SERVICE_CONTROL_STOP, &Service::gSvcStatus)) {
 		std::cout << "Service stopped successfully\n";
 	}
 	else {
@@ -121,15 +121,15 @@ void Service::Stop()
 
 void Service::Delete()
 {
-	auto [schSCManager, schService] = getHandlers();
+	auto [schSCManager, schService] = Service::getHandlers();
 	if (schSCManager == nullptr || schService == nullptr) {
 		return;
 	}
 
-	if (ControlService(schService, SERVICE_CONTROL_STOP, &gSvcStatus)) {
+	if (ControlService(schService, SERVICE_CONTROL_STOP, &Service::gSvcStatus)) {
 		std::cout << "Stopping service\n";
-		while (QueryServiceStatus(schService, &gSvcStatus)) {
-			if (gSvcStatus.dwCurrentState == SERVICE_STOP_PENDING) {
+		while (QueryServiceStatus(schService, &Service::gSvcStatus)) {
+			if (Service::gSvcStatus.dwCurrentState == SERVICE_STOP_PENDING) {
 				std::cout << ".";
 				std::this_thread::sleep_for(std::chrono::milliseconds(250));
 			}
@@ -151,18 +151,18 @@ void Service::Delete()
 
 void WINAPI Service::Main()
 {
-	gSvcStatusHandle = RegisterServiceCtrlHandler(
+	Service::gSvcStatusHandle = RegisterServiceCtrlHandler(
 		SVCNAME,
 		reinterpret_cast<LPHANDLER_FUNCTION>(ControlHandler)
 	);
 
-	if (!gSvcStatusHandle) {
+	if (!Service::gSvcStatusHandle) {
 		std::cout << "RegisterServiceCtrlHandler failed\n";
 		return;
 	}
 
-	gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-	gSvcStatus.dwServiceSpecificExitCode = 0;
+	Service::gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+	Service::gSvcStatus.dwServiceSpecificExitCode = 0;
 
 	ReportStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
 
@@ -171,13 +171,13 @@ void WINAPI Service::Main()
 
 void WINAPI Service::Init()
 {
-	ghSvcStopEvent = CreateEvent(
+	Service::ghSvcStopEvent = CreateEvent(
 		nullptr,
 		TRUE,
 		FALSE,
 		nullptr
 	);
-	if (ghSvcStopEvent == nullptr) {
+	if (Service::ghSvcStopEvent == nullptr) {
 		ReportStatus(SERVICE_STOPPED, GetLastError(), 0);
 		return;
 	}
@@ -191,7 +191,7 @@ void WINAPI Service::Init()
 
 	/* Wait until service stop request */
 	while (1) {
-		WaitForSingleObject(ghSvcStopEvent, INFINITE);
+		WaitForSingleObject(Service::ghSvcStopEvent, INFINITE);
 		ReportStatus(SERVICE_STOPPED, NO_ERROR, 0);
 		break;
 	}
@@ -214,8 +214,8 @@ void WINAPI Service::ControlHandler(DWORD dwCtrl)
 	switch (dwCtrl) {
 	case SERVICE_CONTROL_STOP:
 		ReportStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-		SetEvent(ghSvcStopEvent);
-		ReportStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
+		SetEvent(Service::ghSvcStopEvent);
+		ReportStatus(Service::gSvcStatus.dwCurrentState, NO_ERROR, 0);
 	case SERVICE_CONTROL_INTERROGATE:
 		break;
 	default:
@@ -229,25 +229,25 @@ void Service::ReportStatus(DWORD dwCurrentState,
 {
 	static DWORD dwCheckPoint = 1;
 
-	gSvcStatus.dwCurrentState = dwCurrentState;
-	gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
-	gSvcStatus.dwWaitHint = dwWaitHint;
+	Service::gSvcStatus.dwCurrentState = dwCurrentState;
+	Service::gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
+	Service::gSvcStatus.dwWaitHint = dwWaitHint;
 
 	if (dwCurrentState == SERVICE_START_PENDING) {
-		gSvcStatus.dwControlsAccepted = 0;
+		Service::gSvcStatus.dwControlsAccepted = 0;
 	}
 	else {
-		gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+		Service::gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
 	}
 
 	if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED)) {
-		gSvcStatus.dwCheckPoint = 0;
+		Service::gSvcStatus.dwCheckPoint = 0;
 	}
 	else {
-		gSvcStatus.dwCheckPoint = ++dwCheckPoint;
+		Service::gSvcStatus.dwCheckPoint = ++dwCheckPoint;
 	}
 
-	SetServiceStatus(gSvcStatusHandle, &gSvcStatus);
+	SetServiceStatus(Service::gSvcStatusHandle, &Service::gSvcStatus);
 }
 
 /*

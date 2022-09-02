@@ -10,31 +10,28 @@
 
 #define SVCNAME TEXT("tinky")
 
-SERVICE_STATUS gSvcStatus;
-SERVICE_STATUS_HANDLE gSvcStatusHandle;
-HANDLE ghSvcStopEvent = nullptr;
-
 /*
 	Docs: https://docs.microsoft.com/en-us/windows/win32/services/svc-cpp
 */
-class Service {
-private:
-	static std::tuple<SC_HANDLE, SC_HANDLE> getHandlers();
-public:
-	Service() {};
+namespace Service
+{
+	SERVICE_STATUS gSvcStatus;
+	SERVICE_STATUS_HANDLE gSvcStatusHandle;
+	HANDLE ghSvcStopEvent = nullptr;
 
-	static void Install();
-	static void	Start();
-	static void	Stop();
-	static void	Delete();
-	static void WINAPI Main();
-	static void WINAPI Init();
-	static void WINAPI ControlHandler(DWORD dwCtrl);
-	static void ReportStatus(DWORD dwCurrentState,
+	std::tuple<SC_HANDLE, SC_HANDLE> getHandlers();
+	void Install();
+	void	Start();
+	void	Stop();
+	void	Delete();
+	void WINAPI Main();
+	void WINAPI Init();
+	void WINAPI ControlHandler(DWORD dwCtrl);
+	void ReportStatus(DWORD dwCurrentState,
 		DWORD dwWin32ExitCode,
 		DWORD dwWaitHint);
-	static HANDLE GetToken();
-	static void StartProcess(STARTUPINFO *si,
+	HANDLE GetToken();
+	void StartProcess(STARTUPINFO *si,
 		PROCESS_INFORMATION *pi
 	);
 };
