@@ -18,7 +18,7 @@ SRC_WINKEY	= $(SRC_DIR)\winkey.cpp
 OBJ_WINKEY	= $(SRC_WINKEY:.cpp=.obj)
 OBJ_WINKEY	= $(OBJ_WINKEY:src=obj)
 
-all: create_dirs $(BIN_SVC) $(BIN_WINKEY)
+all: create_dirs bin\$(BIN_SVC) bin\$(BIN_WINKEY)
 	copy bin\$(BIN_SVC) C:\$(BIN_SVC)
 	copy bin\$(BIN_WINKEY) C:\$(BIN_WINKEY)
 
@@ -26,11 +26,11 @@ all: create_dirs $(BIN_SVC) $(BIN_WINKEY)
 	@echo Compiling...
 	$(CC) /c /nologo $(CFLAGS) /Fo$(OBJ_DIR)\ /I$(SRC_DIR) $<
 
-$(BIN_SVC): $(OBJ_SVC)
+bin\$(BIN_SVC): $(OBJ_SVC)
 	@echo Linking $(BIN_SVC)
 	link /NOLOGO /out:$(BIN_DIR)\$(BIN_SVC) $(OBJ_SVC)
 
-$(BIN_WINKEY): $(OBJ_WINKEY)		
+bin\$(BIN_WINKEY): $(OBJ_WINKEY)		
 	@echo Linking $(BIN_WINKEY)
 	link /NOLOGO /out:$(BIN_DIR)\$(BIN_WINKEY) $(OBJ_WINKEY)
 
