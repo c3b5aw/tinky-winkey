@@ -1,5 +1,4 @@
-# Ressources:
-# https://www.bojankomazec.com/2011/10/how-to-use-nmake-and-makefile.html
+# resource nmake: https://www.bojankomazec.com/2011/10/how-to-use-nmake-and-makefile.html
 
 CC		= cl
 CFLAGS	= /Wall /WX /EHs /std:c++20
@@ -18,19 +17,19 @@ SRC_WINKEY	= $(SRC_DIR)\winkey.cpp
 OBJ_WINKEY	= $(SRC_WINKEY:.cpp=.obj)
 OBJ_WINKEY	= $(OBJ_WINKEY:src=obj)
 
-all: create_dirs bin\$(BIN_SVC) bin\$(BIN_WINKEY)
-	copy bin\$(BIN_SVC) C:\$(BIN_SVC)
-	copy bin\$(BIN_WINKEY) C:\$(BIN_WINKEY)
+all: create_dirs $(BIN_DIR)\$(BIN_SVC) $(BIN_DIR)\$(BIN_WINKEY)
+	copy $(BIN_DIR)\$(BIN_SVC) C:\$(BIN_SVC)
+	copy $(BIN_DIR)\$(BIN_WINKEY) C:\$(BIN_WINKEY)
 
 {$(SRC_DIR)}.cpp{$(OBJ_DIR)}.obj:
 	@echo Compiling...
 	$(CC) /c /nologo $(CFLAGS) /Fo$(OBJ_DIR)\ /I$(SRC_DIR) $<
 
-bin\$(BIN_SVC): $(OBJ_SVC)
+$(BIN_DIR)\$(BIN_SVC): $(OBJ_SVC)
 	@echo Linking $(BIN_SVC)
 	link /NOLOGO /out:$(BIN_DIR)\$(BIN_SVC) $(OBJ_SVC)
 
-bin\$(BIN_WINKEY): $(OBJ_WINKEY)		
+$(BIN_DIR)\$(BIN_WINKEY): $(OBJ_WINKEY)
 	@echo Linking $(BIN_WINKEY)
 	link /NOLOGO /out:$(BIN_DIR)\$(BIN_WINKEY) $(OBJ_WINKEY)
 
