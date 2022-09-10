@@ -102,6 +102,9 @@ void Service::Start()
 	CloseServiceHandle(schService);
 }
 
+/*
+    Reference: https://docs.microsoft.com/fr-fr/windows/win32/services/stopping-a-service
+*/
 void Service::Stop()
 {
 	/* Fetch service */
@@ -110,22 +113,102 @@ void Service::Stop()
 		return;
 	}
 
-	/* Send service STOP event */
-	std::cout << "Stopping service\n";
-	if (ControlService(schService, SERVICE_CONTROL_STOP, &Service::gSvcStatus)) {
-		std::cout << "Service stopped successfully\n";
-	}
-	else {
-		const DWORD lastError = GetLastError();
-		if (lastError == 1062) {
-			std::cout << "Service already stopped\n";
-		}
-		else {
-			std::cout << std::format("ControlService STOP failed ({})\n", lastError);
-		}
-	}
+    SERVICE_STATUS_PROCESS ssp;
+    DWORD dwBytesNeeded;
+	DWORD dwStartTime = GetTickCount();
+	DWORD dwTimeout = 30000;
+	DWORD dwWaitTime;
+
+    /* Make sure the service is not already stopped. */
+    if (!QueryServiceStatusEx(
+        schService,
+        SC_STATUS_PROCESS_INFO,
+        (LPBYTE)&ssp,
+        sizeof(SERVICE_STATUS_PROCESS),
+        &dwBytesNeeded
+    )) {
+        std::cout << std::format("QueryServiceStatusEx failed ({})\n", GetLastError()); 
+        goto stop_cleanup;
+    }
+
+    if (ssp.dwCurrentState == SERVICE_STOPPED) {
+        std::cout << "Service is already stopped\n";
+        goto stop_cleanup;
+    }
+
+    /* If a stop is pending, wait for it. */
+    while (ssp.dwCurrentState == SERVICE_STOP_PENDING) {
+        std::cout << "Service stop pending...\n";
+
+        /*
+            Do not wait longer than the wait hint. A good interval is 
+            one-tenth of the wait hint but not less than 1 second  
+            and not more than 10 seconds.
+        */ 
+ 
+        dwWaitTime = ssp.dwWaitHint / 10;
+        if (dwWaitTime < 1000)
+            dwWaitTime = 1000;
+        else if (dwWaitTime > 10000)
+            dwWaitTime = 10000;
+        
+        Sleep(dwWaitTime);
+        if (!QueryServiceStatusEx(schService,
+            SC_STATUS_PROCESS_INFO,
+            (LPBYTE)&ssp, 
+            sizeof(SERVICE_STATUS_PROCESS),
+            &dwBytesNeeded
+        )) {
+            std::cout << std::format("QueryServiceStatusEx failed {}\n", GetLastError());
+            goto stop_cleanup;
+        }
+
+        if (ssp.dwCurrentState == SERVICE_STOPPED) {
+            std::cout << "Service stopped successfully.\n";
+            goto stop_cleanup;
+        }
+
+        if (GetTickCount() - dwStartTime > dwTimeout) {
+            std::cout << "Service stop timed out.\n";
+            goto stop_cleanup;
+        }
+    }
+
+    // Send a stop code to the service.
+    if (!ControlService(
+        schService,
+        SERVICE_CONTROL_STOP,
+        (LPSERVICE_STATUS) &ssp
+    )) {
+        std::cout << std::format("ControlService failed ({})\n", GetLastError());
+        goto stop_cleanup;
+    }
+
+    /* Wait for the service to stop. */
+    while (ssp.dwCurrentState != SERVICE_STOPPED) {
+        Sleep(ssp.dwWaitHint);
+        if (!QueryServiceStatusEx( schService, 
+            SC_STATUS_PROCESS_INFO,
+            (LPBYTE)&ssp, 
+            sizeof(SERVICE_STATUS_PROCESS),
+            &dwBytesNeeded
+        )) {
+            std::cout << std::format("QueryServiceStatusEx failed ({})\n", GetLastError());
+            goto stop_cleanup;
+        }
+
+        if (ssp.dwCurrentState == SERVICE_STOPPED)
+            break;
+
+        if (GetTickCount() - dwStartTime > dwTimeout) {
+            std::cout << "Wait timed out\n";
+            goto stop_cleanup;
+        }
+    }
+    std::cout << "Service stopped successfully\n";
 
 	/* Cleanup handle */
+stop_cleanup:
 	CloseServiceHandle(schService);
 }
 
@@ -235,8 +318,11 @@ void WINAPI Service::ControlHandler(DWORD dwCtrl)
 	switch (dwCtrl) {
 	case SERVICE_CONTROL_STOP:
 		ReportStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+
 		SetEvent(Service::ghSvcStopEvent);
 		ReportStatus(Service::gSvcStatus.dwCurrentState, NO_ERROR, 0);
+        
+        return;
 	case SERVICE_CONTROL_INTERROGATE:
 		break;
 	default:
