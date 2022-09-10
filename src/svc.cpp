@@ -115,14 +115,17 @@ void Service::Stop()
 
     SERVICE_STATUS_PROCESS ssp;
     DWORD dwBytesNeeded;
+	DWORD dwStartTime = GetTickCount();
+	DWORD dwTimeout = 30000;
+	DWORD dwWaitTime;
 
     /* Make sure the service is not already stopped. */
     if (!QueryServiceStatusEx(
         schService,
-        SC_STATUS_PROCESS_INFO
+        SC_STATUS_PROCESS_INFO,
         (LPBYTE)&ssp,
-        sizeof(SERVICE_STATUS_PROCESS)
-        &dwBytesNeeded,
+        sizeof(SERVICE_STATUS_PROCESS),
+        &dwBytesNeeded
     )) {
         std::cout << std::format("QueryServiceStatusEx failed ({})\n", GetLastError()); 
         goto stop_cleanup;
@@ -143,7 +146,7 @@ void Service::Stop()
             and not more than 10 seconds.
         */ 
  
-        DWORD dwWaitTime = ssp.dwWaitHint / 10;
+        dwWaitTime = ssp.dwWaitHint / 10;
         if (dwWaitTime < 1000)
             dwWaitTime = 1000;
         else if (dwWaitTime > 10000)
@@ -154,8 +157,8 @@ void Service::Stop()
             SC_STATUS_PROCESS_INFO,
             (LPBYTE)&ssp, 
             sizeof(SERVICE_STATUS_PROCESS),
-            &dwBytesNeeded,
-        )){
+            &dwBytesNeeded
+        )) {
             std::cout << std::format("QueryServiceStatusEx failed {}\n", GetLastError());
             goto stop_cleanup;
         }
@@ -171,14 +174,11 @@ void Service::Stop()
         }
     }
 
-    // If the service is running, dependencies must be stopped first.
-    StopDependentServices();
-
     // Send a stop code to the service.
     if (!ControlService(
         schService,
         SERVICE_CONTROL_STOP,
-        (LPSERVICE_STATUS) &ssp,
+        (LPSERVICE_STATUS) &ssp
     )) {
         std::cout << std::format("ControlService failed ({})\n", GetLastError());
         goto stop_cleanup;
@@ -191,9 +191,9 @@ void Service::Stop()
             SC_STATUS_PROCESS_INFO,
             (LPBYTE)&ssp, 
             sizeof(SERVICE_STATUS_PROCESS),
-            &dwBytesNeeded,
+            &dwBytesNeeded
         )) {
-            std::cout << "" std::format("QueryServiceStatusEx failed ({})\n", GetLastError());
+            std::cout << std::format("QueryServiceStatusEx failed ({})\n", GetLastError());
             goto stop_cleanup;
         }
 
