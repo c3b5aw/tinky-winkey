@@ -102,6 +102,9 @@ void Service::Start()
 	CloseServiceHandle(schService);
 }
 
+/*
+    Reference: https://docs.microsoft.com/fr-fr/windows/win32/services/stopping-a-service
+*/
 void Service::Stop()
 {
 	/* Fetch service */
@@ -111,27 +114,28 @@ void Service::Stop()
 	}
 
     SERVICE_STATUS_PROCESS ssp;
-    
+    DWORD dwBytesNeeded;
+
     /* Make sure the service is not already stopped. */
     if (!QueryServiceStatusEx(
         schService,
         SC_STATUS_PROCESS_INFO
         (LPBYTE)&ssp,
         sizeof(SERVICE_STATUS_PROCESS)
-        &dwBytesNeeded))
-    {
+        &dwBytesNeeded,
+    )) {
         std::cout << std::format("QueryServiceStatusEx failed ({})\n", GetLastError()); 
         goto stop_cleanup;
     }
 
-    if ( ssp.dwCurrentState == SERVICE_STOPPED ) {
+    if (ssp.dwCurrentState == SERVICE_STOPPED) {
         std::cout << "Service is already stopped\n";
         goto stop_cleanup;
     }
 
     /* If a stop is pending, wait for it. */
-    while ( ssp.dwCurrentState == SERVICE_STOP_PENDING ) {
-        std::cout << "Service stop pending...\n"´
+    while (ssp.dwCurrentState == SERVICE_STOP_PENDING) {
+        std::cout << "Service stop pending...\n";
 
         /*
             Do not wait longer than the wait hint. A good interval is 
@@ -150,7 +154,8 @@ void Service::Stop()
             SC_STATUS_PROCESS_INFO,
             (LPBYTE)&ssp, 
             sizeof(SERVICE_STATUS_PROCESS),
-            &dwBytesNeeded)){
+            &dwBytesNeeded,
+        )){
             std::cout << std::format("QueryServiceStatusEx failed {}\n", GetLastError());
             goto stop_cleanup;
         }
@@ -173,22 +178,21 @@ void Service::Stop()
     if (!ControlService(
         schService,
         SERVICE_CONTROL_STOP,
-        (LPSERVICE_STATUS) &ssp))
-    {
+        (LPSERVICE_STATUS) &ssp,
+    )) {
         std::cout << std::format("ControlService failed ({})\n", GetLastError());
         goto stop_cleanup;
     }
 
     /* Wait for the service to stop. */
-    while (ssp.dwCurrentState != SERVICE_STOPPED) 
-    {
+    while (ssp.dwCurrentState != SERVICE_STOPPED) {
         Sleep(ssp.dwWaitHint);
         if (!QueryServiceStatusEx( schService, 
             SC_STATUS_PROCESS_INFO,
             (LPBYTE)&ssp, 
             sizeof(SERVICE_STATUS_PROCESS),
-            &dwBytesNeeded))
-        {
+            &dwBytesNeeded,
+        )) {
             std::cout << "" std::format("QueryServiceStatusEx failed ({})\n", GetLastError());
             goto stop_cleanup;
         }
